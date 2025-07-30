@@ -41,6 +41,7 @@
 #define WMI_SET_ATTR    "Lenovo_SetBiosSettingEx"
 #define WMI_SAVE_ATTR   "Lenovo_SaveBiosSettingsEx"
 #define WMI_CERT2PASS   "Lenovo_ChangeBiosCertificateToPassword"
+#define WMI_CERT2PASS_TC "Lenovo_ChangeCertificateToSvp"
 
 #define WMI_ADMIN_USER  "SVC" /* AKA SuperVisor */
 #define WMI_SYSTEM_USER "SMC"
@@ -56,6 +57,7 @@ static void usage(void)
 	fprintf(stderr, "  clearcert -s serial -k privkey.pem             - Clear installed certificate\n");
 	fprintf(stderr, "  attribute -a attribute -v value -k privkey.pem - Set attribute to given value\n");
 	fprintf(stderr, "  cert2pass -p passwd -k privkey.pem             - Go from certificate to password authentication\n");
+	fprintf(stderr, "  cert2pass-tc -p passwd -k privkey.pem          - Certificate to password for ThinkCenter platforms\n");
 	fprintf(stderr, "  unlock -f request.txt -k privkey.pem           - Generate unlock code from request file.\n");
 	fprintf(stderr, "  unlock -r request-string -k privkey.pem        - Generate unlock code from request string.\n");
 
@@ -304,19 +306,26 @@ int main(int argc, char* argv[])
 		fclose(fp);
 		free(base64sig);
 	}
-	else if (!strcmp(command, "cert2pass")) {
+	else if (!strcmp(command, "cert2pass") || !strcmp(command, "cert2pass-tc")) {
+		char wmi_cert2pass[50];
+
 		if (!password || !key) {
 			usage();
 			exit(1);
 		}
-		wmistr = (char *)malloc(strlen(WMI_ADMIN_USER) + 1 + strlen(WMI_CERT2PASS) + 1 + strlen(password) + 1);
+
+		if (!strcmp(command, "cert2pass-tc"))
+			sprintf(wmi_cert2pass, WMI_CERT2PASS_TC);
+		else
+			sprintf(wmi_cert2pass, WMI_CERT2PASS);
+		wmistr = (char *)malloc(strlen(WMI_ADMIN_USER) + 1 + strlen(wmi_cert2pass) + 1 + strlen(password) + 1);
 		if (!wmistr)
 			return -1;
 
 		if (user)
-			ret = sprintf(wmistr, "%s,%s,%s", WMI_CERT2PASS, determine_user_type(user), password);
+			ret = sprintf(wmistr, "%s,%s,%s", wmi_cert2pass, determine_user_type(user), password);
 		else
-			ret = sprintf(wmistr, "%s,%s", WMI_CERT2PASS, password);
+			ret = sprintf(wmistr, "%s,%s", wmi_cert2pass, password);
 		if (ret < 0) {
 			free(wmistr);
 			return ret;
