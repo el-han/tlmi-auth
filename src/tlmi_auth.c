@@ -29,7 +29,7 @@
 #include "tlmi_crypto.h"
 
 #ifndef TLMI_PROG_VER
-#define TLMI_PROG_VER   "0.0.0"
+#define TLMI_PROG_VER   "0.0.1"
 #endif
 
 #define TLMI_ADMIN "/sys/class/firmware-attributes/thinklmi/authentication/Admin"
