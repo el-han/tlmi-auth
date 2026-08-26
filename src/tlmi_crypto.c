@@ -128,8 +128,10 @@ static size_t hexs2bin(const char *hex, unsigned char **out)
 		return 0;
 
 	len = strlen(hex);
+#if 0 //If there is a terminating return - it will get lopped off
 	if (len % 2 != 0)
 		return 0;
+#endif
 	len /= 2;
 
 	*out = (unsigned char *)malloc(len);
@@ -181,6 +183,45 @@ static int Base64Encode(const unsigned char* buffer, size_t length, char** base6
 
 	*base64Text = buff;
 	return 0;
+}
+
+static int Base64Decode(const char *base64_input, unsigned char **out)
+{
+    BIO *b64 = NULL;
+    BIO *bio = NULL;
+    int decoded_bytes = -1;
+    size_t input_len = strlen(base64_input);
+
+    *out = (unsigned char *)malloc(input_len);
+    if (!*out)
+           return 0;
+
+    // Create a base64 filter BIO and a memory source BIO
+    b64 = BIO_new(BIO_f_base64());
+    if (!b64) {
+           free(*out);
+           return -1;
+    }
+    bio = BIO_new_mem_buf(base64_input, -1);
+    if (!bio) {
+           free(*out);
+           BIO_free(b64);
+           return -1;
+    }
+
+    // Push the memory BIO through the base64 filter
+    bio = BIO_push(b64, bio);
+
+    // Disable line wrapping in base64
+    BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
+
+    // Read the decoded data
+    decoded_bytes = BIO_read(bio, *out, input_len);
+
+    // Free the BIO chain
+    BIO_free_all(bio);
+
+    return decoded_bytes;
 }
 
 static int password_callback(char *buf, int bufsiz,
@@ -338,27 +379,33 @@ int unlock_request(char *keyfile, char *request)
 	if (!buf)
 		return -1;
 
-	hexs2bin(request, &encrypted);
+       /* Thinkstation uses Base64 and TP uses Hex - so we need to try both and see which works */
+       ret = hexs2bin(request, &encrypted);
+       if (ret <= 0) {
+               //fprintf(stderr, "Failed to decrypt request data. Trying Base64\n");
+               /* Free up previous buffer */
+               free(encrypted);
+               ret = Base64Decode(request, &encrypted);
+               if (ret <= 0) {
+                       fprintf(stderr, "Unable to decode request data. Quitting\n");
+                       goto out;
+               }
+       }
+
 	len = RSA_size(rsa);
 	ret = RSA_private_decrypt(len, encrypted, buf, rsa, RSA_PKCS1_OAEP_PADDING);
-	if (ret == -1) {
-		fprintf(stderr, "Error: Failed to decrypt request data.\n");
-		print_dbg("%s\n", ERR_error_string(ERR_get_error(), NULL));
-		free(encrypted);
-		free(buf);
-		RSA_free(rsa);
-		return -1;
+	if (ret < 0) {
+               fprintf(stderr, "Unable to decrypt request data. Quitting\n");
+               goto out;
 	}
 
 	memcpy(&req, buf, sizeof(req));
 
 	// Validate request
-	if ((req.Signature != CBBR_SIG) || req.Revision > CERT_REQ_REVISION) {
-		fprintf(stderr, "Error: Invalid request data.\n");
-		free(encrypted);
-		free(buf);
-		RSA_free(rsa);
-		return -1;
+	if ((req.Signature != CBBR_SIG) || req.Revision < CERT_REQ_REVISION) {
+               fprintf(stderr, "Error: Invalid request data\n");
+               ret = -EINVAL;
+               goto out;
 	}
 
 	type = req.Type;
@@ -375,13 +422,16 @@ int unlock_request(char *keyfile, char *request)
 	if (req.Type != type) {
 		fprintf(stderr, "Error: Invalid request type\n");
 		ret = -1;
+		goto out;
 	}
 
 	print_info("Machine Serial: %s\n", serial);
 	print_info("Unlock code: ");
 	printf("%s", otp);
 
-	free(encrypted);
+out:
+       if (encrypted)
+               free(encrypted);
 	free(buf);
 	RSA_free(rsa);
 
