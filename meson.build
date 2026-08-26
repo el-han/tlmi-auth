@@ -1,5 +1,5 @@
 project('tlmi-auth', 'c',
-    version : '1.0.1',
+    version : '1.0.2',
     license : 'GPL-2.0-or-later',
     default_options : [
         'buildtype=debugoptimized',
@@ -29,8 +29,19 @@ tlmi_auth_src = files(
     'src/tlmi_auth.c',
 )
 
+tlmi_auth_v2_src = files(
+    'src/tlmi_crypto.c',
+    'src/tlmi_auth_v2.c',
+)
+
 tlmi_auth = executable('tlmi-auth',
     tlmi_auth_src,
+    dependencies : [libcrypto_dep, libssl_dep],
+    install : true,
+)
+
+tlmi_auth_v2 = executable('tlmi-auth-v2',
+    tlmi_auth_v2_src,
     dependencies : [libcrypto_dep, libssl_dep],
     install : true,
 )
